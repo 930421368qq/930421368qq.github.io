@@ -12,15 +12,15 @@
     <meta id="shareDescription" property="og:description" content="点击进入直播间">
     <meta property="og:type" content="website">
     <!-- 微信分享图片 -->
-    <meta id="shareImage" property="og:image" content="https://930421368qq.github.io/share-logo.png?v=20260815">
-    <meta property="og:image:secure_url" content="https://930421368qq.github.io/share-logo.png?v=20260815">
+    <meta id="shareImage" property="og:image" content="/share-logo.png?v=20260815">
+    <meta property="og:image:secure_url" content="/share-logo.png?v=20260815">
     <meta property="og:image:width" content="300">
     <meta property="og:image:height" content="300">
-    <link id="shareImageLink" rel="image_src" href="https://930421368qq.github.io/share-logo.png?v=20260815">
+    <link id="shareImageLink" rel="image_src" href="/share-logo.png?v=20260815">
     <!-- 兼容其他分享抓取方式 -->
     <meta id="itemTitle" itemprop="name" content="直播">
     <meta id="itemDescription" itemprop="description" content="点击进入直播间">
-    <meta id="itemImage" itemprop="image" content="https://930421368qq.github.io/share-logo.png?v=20260815">
+    <meta id="itemImage" itemprop="image" content="/share-logo.png?v=20260815">
     <style>
         * {
             margin: 0;
@@ -63,6 +63,39 @@
             z-index: 1;
         }
 
+        /* 内页加载失败时的可见提示层 */
+        #loadError {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            background: rgba(0, 0, 0, 0.88);
+            color: #fff;
+            font-size: 16px;
+            text-align: center;
+            display: none;
+        }
+
+        #loadError .load-error-box {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            padding: 24px 32px;
+            background: #1f1f1f;
+            border-radius: 10px;
+            line-height: 1.6;
+            white-space: nowrap;
+        }
+
+        #loadError .load-error-tip {
+            font-size: 13px;
+            color: #bbb;
+            margin-top: 10px;
+        }
+
         #errorMessage {
             position: relative;
             z-index: 2;
@@ -78,12 +111,25 @@
 
 <body>
     <!-- 不要删除，这是给微信读取的实际图片 -->
-    <img id="shareCover" src="https://930421368qq.github.io/share-logo.png?v=20260815" width="300" height="300"
+    <img id="shareCover" src="/share-logo.png?v=20260815" width="300" height="300"
         alt="直播">
     <iframe id="liveFrame" allow="autoplay; fullscreen" allowfullscreen></iframe>
+    <!-- 内页加载失败提示（默认隐藏） -->
+    <div id="loadError">
+        <div class="load-error-box">
+            直播间加载失败
+            <div class="load-error-tip">请检查网络后重新进入</div>
+        </div>
+    </div>
     <script>
         (function () {
             var LIVE_ORIGIN = 'https://live.hntslw.cn';
+
+            /* iframe 是否真正加载成功（由内页发出的 live-ready 消息确认） */
+            var liveReady = false;
+
+            /* 加载超时定时器 */
+            var loadTimer = null;
 
             var oauthCode = '';
 
@@ -100,7 +146,7 @@
              * 分享图片固定使用 GitHub 上的图片，
              * 不再使用 fxfx.stmpsk.cn 的 HTTP 图片。
              */
-            var DEFAULT_IMAGE = 'https://930421368qq.github.io/share-logo.png?v=20260815';
+            var DEFAULT_IMAGE = '/share-logo.png?v=20260815';
 
             var liveFrame = document.getElementById('liveFrame');
 
@@ -252,6 +298,37 @@
                     var data = event.data || {};
 
                     /*
+                     * 内页已开始执行，标记加载成功并取消超时提示
+                     */
+                    if (data.type === 'live-ready') {
+                        liveReady = true;
+
+                        if (loadTimer) {
+                            clearTimeout(loadTimer);
+                            loadTimer = null;
+                        }
+
+                        return;
+                    }
+
+                    /*
+                     * 安卓系统大字体适配：按内页实测缩放比，
+                     * 先放大 iframe 再整体缩回，均匀抵消 textZoom
+                     */
+                    if (data.type === 'font-scale') {
+                        var scale = parseFloat(data.scale);
+
+                        if (scale > 0 && Math.abs(scale - 1) > 0.02) {
+                            liveFrame.style.width = (scale * 100) + '%';
+                            liveFrame.style.height = (scale * 100) + '%';
+                            liveFrame.style.transform = 'scale(' + (1 / scale) + ')';
+                            liveFrame.style.transformOrigin = '0 0';
+                        }
+
+                        return;
+                    }
+
+                    /*
                      * 接收直播名称和描述
                      */
                     if (
@@ -349,6 +426,7 @@
                 encodeURIComponent(spid) +
                 '&sh=' +
                 encodeURIComponent(
+                    window.location.origin +
                     window.location.pathname);
 
             if (oauthCode && oauthState) {
@@ -365,6 +443,12 @@
             if (new URLSearchParams(
                 window.location.search).get('debugwx') === '1') {
                 targetUrl += '&debugwx=1';
+            }
+
+            // 临时诊断参数透传：?diag=1 时让内页显示屏幕/字体缩放参数
+            if (new URLSearchParams(
+                window.location.search).get('diag') === '1') {
+                targetUrl += '&diag=1';
             }
 
             // 支付返回：通知 room.php 直接播放直播画面，不再显示“点击观看”按钮
@@ -398,6 +482,23 @@
              * 最后设置 iframe 地址
              */
             liveFrame.src = targetUrl;
+
+            /*
+             * 加载失败兜底：超过 10 秒仍未收到内页的 live-ready 消息，
+             * 说明内页很可能没有加载成功（如域名被拦截、网络异常），
+             * 在壳页面显示可见提示，避免用户只看到黑屏。
+             */
+            loadTimer = setTimeout(function () {
+                if (!liveReady) {
+                    var errorBox =
+                        document.getElementById(
+                            'loadError');
+
+                    if (errorBox) {
+                        errorBox.style.display = 'block';
+                    }
+                }
+            }, 10000);
         })();
     </script>
 </body>
