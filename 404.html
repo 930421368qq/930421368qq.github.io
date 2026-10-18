@@ -488,17 +488,17 @@
              * 说明内页很可能没有加载成功（如域名被拦截、网络异常），
              * 在壳页面显示可见提示，避免用户只看到黑屏。
              */
-            loadTimer = setTimeout(function () {
-                if (!liveReady) {
-                    var errorBox =
-                        document.getElementById(
-                            'loadError');
+            // loadTimer = setTimeout(function () {
+            //     if (!liveReady) {
+            //         var errorBox =
+            //             document.getElementById(
+            //                 'loadError');
 
-                    if (errorBox) {
-                        errorBox.style.display = 'block';
-                    }
-                }
-            }, 10000);
+            //         if (errorBox) {
+            //             errorBox.style.display = 'block';
+            //         }
+            //     }
+            // }, 10000);
         })();
     </script>
 </body>
