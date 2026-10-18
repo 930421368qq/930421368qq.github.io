@@ -21,6 +21,27 @@
     <meta id="itemTitle" itemprop="name" content="直播">
     <meta id="itemDescription" itemprop="description" content="点击进入直播间">
     <meta id="itemImage" itemprop="image" content="/share-logo.png?v=20260815">
+    <!-- 固定字体：禁止 iOS 微信跟随系统字体大小缩放页面（保证下方缩放比实测准确） -->
+    <script>
+        (function () {
+            function handleFontSize() {
+                WeixinJSBridge.invoke('setFontSizeCallback', { 'fontSize': 0 });
+                WeixinJSBridge.on('menu:setfont', function () {
+                    WeixinJSBridge.invoke('setFontSizeCallback', { 'fontSize': 0 });
+                });
+            }
+            if (typeof WeixinJSBridge == "object" && typeof WeixinJSBridge.invoke == "function") {
+                handleFontSize();
+            } else {
+                if (document.addEventListener) {
+                    document.addEventListener("WeixinJSBridgeReady", handleFontSize, false);
+                } else if (document.attachEvent) {
+                    document.attachEvent("WeixinJSBridgeReady", handleFontSize);
+                    document.attachEvent("onWeixinJSBridgeReady", handleFontSize);
+                }
+            }
+        })();
+    </script>
     <style>
         * {
             margin: 0;
@@ -149,6 +170,30 @@
             var DEFAULT_IMAGE = '/share-logo.png?v=20260815';
 
             var liveFrame = document.getElementById('liveFrame');
+
+            /*
+             * 系统大字体(textZoom)适配：
+             * 壳页面与 iframe 处于同一 WebView，缩放比一致，
+             * 直接在本页实测后先放大 iframe 再整体缩回，均匀抵消文字缩放。
+             * iOS 已由上方 WeixinJSBridge 锁定字体，此处测得为 1，不会触发。
+             */
+            (function fixFontScale() {
+                try {
+                    var span = document.createElement('span');
+                    span.style.cssText = 'font-size:16px;position:absolute;left:-9999px;top:-9999px;';
+                    span.textContent = '测试';
+                    document.body.appendChild(span);
+                    var fs = parseFloat(window.getComputedStyle(span).fontSize);
+                    document.body.removeChild(span);
+                    var scale = fs / 16;
+                    if (scale > 0 && Math.abs(scale - 1) > 0.02) {
+                        liveFrame.style.width = (scale * 100) + '%';
+                        liveFrame.style.height = (scale * 100) + '%';
+                        liveFrame.style.transform = 'scale(' + (1 / scale) + ')';
+                        liveFrame.style.transformOrigin = '0 0';
+                    }
+                } catch (e) {}
+            })();
 
             /*
              * 更新页面标题和分享资料
@@ -306,23 +351,6 @@
                         if (loadTimer) {
                             clearTimeout(loadTimer);
                             loadTimer = null;
-                        }
-
-                        return;
-                    }
-
-                    /*
-                     * 安卓系统大字体适配：按内页实测缩放比，
-                     * 先放大 iframe 再整体缩回，均匀抵消 textZoom
-                     */
-                    if (data.type === 'font-scale') {
-                        var scale = parseFloat(data.scale);
-
-                        if (scale > 0 && Math.abs(scale - 1) > 0.02) {
-                            liveFrame.style.width = (scale * 100) + '%';
-                            liveFrame.style.height = (scale * 100) + '%';
-                            liveFrame.style.transform = 'scale(' + (1 / scale) + ')';
-                            liveFrame.style.transformOrigin = '0 0';
                         }
 
                         return;
